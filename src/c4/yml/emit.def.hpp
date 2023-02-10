@@ -884,17 +884,6 @@ void Emitter<Writer>::_write_scalar_json(csubstr s, bool as_key, bool use_quotes
        && (
            // do not quote special cases
            (s == "true" || s == "false" || s == "null")
-           || (
-               // do not quote numbers
-               (s.is_number()
-                && (
-                    // quote integral numbers if they have a leading 0
-                    // https://github.com/biojppm/rapidyaml/issues/291
-                    (!(s.len > 1 && s.begins_with('0')))
-                    // do not quote reals with leading 0
-                    // https://github.com/biojppm/rapidyaml/issues/313
-                    || (s.find('.') != csubstr::npos) ))
-               )
            )
         )
     {
@@ -902,55 +891,91 @@ void Emitter<Writer>::_write_scalar_json(csubstr s, bool as_key, bool use_quotes
     }
     else
     {
-        size_t pos = 0;
-        this->Writer::_do_write('"');
-        for(size_t i = 0; i < s.len; ++i)
+        if((s.is_number()
+            // do not quote numbers
+            && (
+                // quote integral numbers if they have a leading 0
+                // https://github.com/biojppm/rapidyaml/issues/291
+                (!(s.len > 1 && s.begins_with('0')))
+                // do not quote reals with leading 0
+                // https://github.com/biojppm/rapidyaml/issues/313
+                || (s.find('.') != csubstr::npos) ))
+        )
         {
-            switch(s.str[i])
+            // replace inf, -inf and nan with 8e888, -8e888 and null value
+            size_t skip_start = (s[0] == '-');
+            if(s[skip_start] == 'i' && s.size() == 3 + skip_start) // is it inf?
             {
-            case '"':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\\"");
-              pos = i + 1;
-              break;
-            case '\n':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\n");
-              pos = i + 1;
-              break;
-            case '\t':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\t");
-              pos = i + 1;
-              break;
-            case '\\':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\\\");
-              pos = i + 1;
-              break;
-            case '\r':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\r");
-              pos = i + 1;
-              break;
-            case '\b':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\b");
-              pos = i + 1;
-              break;
-            case '\f':
-              this->Writer ::_do_write(s.range(pos, i));
-              this->Writer ::_do_write("\\f");
-              pos = i + 1;
-              break;
+                if(s[skip_start+1] == 'n' && s[skip_start+2] == 'f')
+                {
+                    if(skip_start)
+                        this->Writer::_do_write("-8e888");
+                    else
+                        this->Writer::_do_write("8e888");
+                }
+
+            }
+            else if (s[0] == 'n' && s.size() == 3 && s[1] == 'a' && s[2] == 'n') // is it nan ?
+            {
+                this->Writer::_do_write("null"); // replace nan -> null
+            }
+            else
+            {
+                this->Writer::_do_write(s);
             }
         }
-        if(pos < s.len)
+        else
         {
-            csubstr sub = s.sub(pos);
-            this->Writer::_do_write(sub);
+            size_t pos = 0;
+            this->Writer::_do_write('"');
+            for(size_t i = 0; i < s.len; ++i)
+            {
+                switch(s.str[i])
+                {
+                case '"':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\\"");
+                    pos = i + 1;
+                    break;
+                case '\n':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\n");
+                    pos = i + 1;
+                    break;
+                case '\t':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\t");
+                    pos = i + 1;
+                    break;
+                case '\\':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\\\");
+                    pos = i + 1;
+                    break;
+                case '\r':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\r");
+                    pos = i + 1;
+                    break;
+                case '\b':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\b");
+                    pos = i + 1;
+                    break;
+                case '\f':
+                    this->Writer ::_do_write(s.range(pos, i));
+                    this->Writer ::_do_write("\\f");
+                    pos = i + 1;
+                    break;
+                }
+            }
+            if(pos < s.len)
+            {
+                csubstr sub = s.sub(pos);
+                this->Writer::_do_write(sub);
+            }
+            this->Writer::_do_write('"');
         }
-        this->Writer::_do_write('"');
     }
 }
 
